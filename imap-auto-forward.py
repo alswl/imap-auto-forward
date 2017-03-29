@@ -127,6 +127,7 @@ def search_and_forward(imap_client, smtp_client_factory, redirect_to):
         email_data = data[0][1].decode('UTF-8')
         forward(smtp_client_factory, redirect_to, email_data)
         console.info('>')
+    console.info('Search and forwad done.')
     imap_client.close()
 
 
