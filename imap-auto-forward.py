@@ -126,7 +126,7 @@ def search_and_forward(imap_client, smtp_client_factory, redirect_to):
         _, data = imap_client.fetch(message_number, '(RFC822)')
         email_data = data[0][1].decode('UTF-8')
         forward(smtp_client_factory, redirect_to, email_data)
-        console.info('>')
+        console.info('📧')
     console.info('Search and forwad done.')
     imap_client.close()
 
@@ -158,7 +158,11 @@ def main():
         return
     try:
         while True:
-            search_and_forward(imap_client, smtp_client_factory, args.redirectto)
+            try:
+                search_and_forward(imap_client, smtp_client_factory, args.redirectto)
+            except TimeoutError:
+                logger.error('Timeout')
+                console.info('🔄')
             time.sleep(10)
     except InterruptedError:
         pass
