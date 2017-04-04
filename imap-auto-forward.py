@@ -160,8 +160,14 @@ def main():
         while True:
             try:
                 search_and_forward(imap_client, smtp_client_factory, args.redirectto)
-            except TimeoutError:
-                logger.error('Timeout')
+            except TimeoutError as e:
+                logger.error(e)
+                console.info('🔄')
+            except imaplib.IMAP4.abort as e:
+                logger.error(e)
+                console.info('🔄')
+            except imaplib.IMAP4.error as e:
+                logger.error(e)
                 console.info('🔄')
             time.sleep(10)
     except InterruptedError:
