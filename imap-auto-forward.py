@@ -151,22 +151,28 @@ def main():
     # smtp_client_factory = SMTPClientFactory(args.smtphost, args.smtpport, args.smtpusername,
     #                                         'NO', True)
 
-    imap_client = imaplib.IMAP4_SSL(host=args.server)
-    typ, message = imap_client.login(args.username, password)
-    if typ != 'OK':
-        logger.error('Login failed, message: %s' % message)
-        return
+    imap_client = None
+
     try:
         while True:
+            if imap_client is None:
+                imap_client = imaplib.IMAP4_SSL(host=args.server)
+                typ, message = imap_client.login(args.username, password)
+                if typ != 'OK':
+                    logger.error('Login failed, message: %s' % message)
+                    return
             try:
                 search_and_forward(imap_client, smtp_client_factory, args.redirectto)
             except TimeoutError as e:
+                imap_client = None
                 logger.error(e)
                 console.info('🔄')
             except imaplib.IMAP4.abort as e:
+                imap_client = None
                 logger.error(e)
                 console.info('🔄')
             except imaplib.IMAP4.error as e:
+                imap_client = None
                 logger.error(e)
                 console.info('🔄')
             time.sleep(10)
