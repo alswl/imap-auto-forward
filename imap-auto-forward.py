@@ -11,13 +11,17 @@ import logging
 import logging.config
 import time
 import getpass
+import socket
+
 
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 import re
 
+
 MAIL_PATTERN = re.compile(".*<(.+@.+)>|([^<>]+)")
 SENDMAIL_BIN_PATH = "/usr/sbin/sendmail"  # full path!
+DEFAULT_SOCKET_TIMEOUT = 10
 
 LOGGING = {
     'version': 1,
@@ -60,6 +64,8 @@ console = logging.getLogger('console')
 
 WORKER_SIZE = 4
 executor = ThreadPoolExecutor(max_workers=WORKER_SIZE)
+
+socket.setdefaulttimeout(DEFAULT_SOCKET_TIMEOUT)
 
 
 class SMTPClientFactory(object):
