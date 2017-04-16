@@ -15,13 +15,15 @@ import socket
 
 
 import subprocess
-from concurrent.futures import ThreadPoolExecutor
 import re
+from apscheduler.schedulers.blocking import BlockingScheduler
 
+DEFAULT_INTERVAL_SECONDS = 10
 
 MAIL_PATTERN = re.compile(".*<(.+@.+)>|([^<>]+)")
 SENDMAIL_BIN_PATH = "/usr/sbin/sendmail"  # full path!
 DEFAULT_SOCKET_TIMEOUT = 10
+WORKER_SIZE = 1
 
 LOGGING = {
     'version': 1,
@@ -52,6 +54,7 @@ LOGGING = {
         'console': {
             'handlers': ['consoleHandler'],
             'level': 'INFO',
+            'propagate': False,
         },
     },
 }
@@ -61,11 +64,9 @@ logging.config.dictConfig(LOGGING)
 logger = logging.getLogger(__name__)
 console = logging.getLogger('console')
 
-
-WORKER_SIZE = 4
-executor = ThreadPoolExecutor(max_workers=WORKER_SIZE)
-
 socket.setdefaulttimeout(DEFAULT_SOCKET_TIMEOUT)
+
+scheduler = BlockingScheduler()
 
 
 class SMTPClientFactory(object):
@@ -85,7 +86,10 @@ class SMTPClientFactory(object):
         return smtp_client
 
 
-def send_mail(smtp_client_factory, from_addr, to_addr, message):
+def send_mail_via_smtp(smtp_client_factory, from_addr, to_addr, message):
+    """
+    ignore, many SMTP service provider do NOT allow send with other email address
+    """
     smtp_client = smtp_client_factory.get_smtp_client_with_login()
     # Client does not have permissions to send as this sender  # XXX
     senderrs = smtp_client.sendmail(from_addr, [to_addr], message.encode('utf-8'))
@@ -103,21 +107,19 @@ def send_mail_via_sendmail(from_addr, to_addr, subject, message):
         return
 
 
-def forward(smtp_client_factory, redirect_to, email_data):
+def forward(redirect_to, email_data):
     message = email.message_from_string(email_data)
-    # message.replace_header("From", from_addr)
-    #message.replace_header("To", redirect_to)
     m = MAIL_PATTERN.match(message.get('From', 'unkown-from@domain.com'))
     m1, m2 = m.groups()
     from_mail = m1 or m2
     subject = message.get("Subject", "")
-    #executor.submit(send_mail, smtp_client_factory, from_mail, redirect_to, message)
-    #send_mail(smtp_client_factory, from_mail, redirect_to, message.as_string())
+    #executor.submit(send_mail_via_smtp, smtp_client_factory, from_mail, redirect_to, message)
+    #send_mail_via_smtp(smtp_client_factory, from_mail, redirect_to, message.as_string())
     send_mail_via_sendmail(from_mail, redirect_to, subject, message.as_string())
     logger.info('Processed, from: %s, to: %s, subject: %s' % (from_mail, redirect_to, subject))
 
 
-def search_and_forward(imap_client, smtp_client_factory, redirect_to):
+def search_and_forward(imap_client, redirect_to):
     typ, data = imap_client.select(mailbox='INBOX')
     if typ != 'OK':
         logger.error('Select inbox failed, message: %s' % data)
@@ -131,10 +133,38 @@ def search_and_forward(imap_client, smtp_client_factory, redirect_to):
     for message_number in data[0].split():
         _, data = imap_client.fetch(message_number, '(RFC822)')
         email_data = data[0][1].decode('UTF-8')
-        forward(smtp_client_factory, redirect_to, email_data)
+        forward(redirect_to, email_data)
         console.info('📧')
     console.info('Search and forwad done.')
     imap_client.close()
+
+
+def run(host, username, password, redirect_to):
+    imap_client = None  # TODO pull up to global
+
+    try:
+        if imap_client is None:
+            imap_client = imaplib.IMAP4_SSL(host=host)
+            typ, message = imap_client.login(username, password)
+            if typ != 'OK':
+                logger.error('Login failed, message: %s' % message)
+                return
+        try:
+            search_and_forward(imap_client, redirect_to)
+        except TimeoutError as e:
+            imap_client = None
+            logger.error(e)
+            console.info('>')
+        except imaplib.IMAP4.abort as e:
+            imap_client = None
+            logger.error(e)
+            console.info('>')
+        except imaplib.IMAP4.error as e:
+            imap_client = None
+            logger.error(e)
+            console.info('>')
+    finally:
+        imap_client.logout()
 
 
 def main():
@@ -150,43 +180,14 @@ def main():
     # smtp_password = os.environ.get('IMAP_AUTO_FORWARD_SMTP_PASSWORD')
     if password is None:
         password = getpass.getpass('IMAP password:')
-    # if smtp_password is None:
-    #     smtp_password = getpass.getpass('SMTP password:')
 
-    smtp_client_factory = SMTPClientFactory(None, None, None, 'NO', True)
-    # smtp_client_factory = SMTPClientFactory(args.smtphost, args.smtpport, args.smtpusername,
-    #                                         'NO', True)
-
-    imap_client = None
-
+    scheduler.add_job(run, 'interval', max_instances=WORKER_SIZE, seconds=DEFAULT_INTERVAL_SECONDS,
+                      args=[args.server, args.username, password, args.redirectto])
     try:
-        while True:
-            if imap_client is None:
-                imap_client = imaplib.IMAP4_SSL(host=args.server)
-                typ, message = imap_client.login(args.username, password)
-                if typ != 'OK':
-                    logger.error('Login failed, message: %s' % message)
-                    return
-            try:
-                search_and_forward(imap_client, smtp_client_factory, args.redirectto)
-            except TimeoutError as e:
-                imap_client = None
-                logger.error(e)
-                console.info('🔄')
-            except imaplib.IMAP4.abort as e:
-                imap_client = None
-                logger.error(e)
-                console.info('🔄')
-            except imaplib.IMAP4.error as e:
-                imap_client = None
-                logger.error(e)
-                console.info('🔄')
-            time.sleep(10)
-    except InterruptedError:
+        scheduler.start()
+    except KeyboardInterrupt:
         pass
-    finally:
-        imap_client.logout()
-        executor.shutdown(True)
+    scheduler.shutdown()
 
 
 if __name__ == '__main__':
