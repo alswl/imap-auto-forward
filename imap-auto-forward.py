@@ -99,7 +99,6 @@ def send_mail_via_smtp(smtp_client_factory, from_addr, to_addr, message):
 def send_mail_via_sendmail(from_addr, to_addr, subject, message):
     p = subprocess.Popen([SENDMAIL_BIN_PATH, "-f", from_addr, to_addr],
                          stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    # __import__('pdb').set_trace()
     stdout, stderr = p.communicate(input=message.encode('utf-8'))
     if stdout or stderr:
         logger.error("Failed forwarding message '%s'\nSendmail stdout:%s\nSendmail stderr:%s\n" % (
@@ -134,8 +133,8 @@ def search_and_forward(imap_client, redirect_to):
         _, data = imap_client.fetch(message_number, '(RFC822)')
         email_data = data[0][1].decode('UTF-8')
         forward(redirect_to, email_data)
-        console.info('📧')
-    console.info('Search and forwad done.')
+        console.debug('>')
+    console.debug('.')
     imap_client.close()
 
 
@@ -154,15 +153,15 @@ def run(host, username, password, redirect_to):
         except TimeoutError as e:
             imap_client = None
             logger.error(e)
-            console.info('>')
+            console.debug('!')
         except imaplib.IMAP4.abort as e:
             imap_client = None
-            logger.error(e)
-            console.info('>')
+            logger.debug(e)
+            console.info('!')
         except imaplib.IMAP4.error as e:
             imap_client = None
             logger.error(e)
-            console.info('>')
+            console.debug('!')
     finally:
         imap_client.logout()
 
