@@ -163,7 +163,8 @@ def run(host, username, password, redirect_to):
             logger.error(e)
             console.debug('!')
     finally:
-        imap_client.logout()
+        if imap_client is not None:
+            imap_client.logout()
 
 
 def main():
