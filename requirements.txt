@@ -1,3 +1,5 @@
 apscheduler==3.3.1
 ipython==5.3.0
 ipdb
+exchangelib
+raven

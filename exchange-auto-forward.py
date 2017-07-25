@@ -2,20 +2,17 @@
 from __future__ import unicode_literals
 
 import os
-import sys
 import argparse
-import imaplib
 import email
-import smtplib
-import logging
 import logging.config
-import time
 import getpass
 import socket
 
 import subprocess
 import re
 from apscheduler.schedulers.blocking import BlockingScheduler
+from exchangelib import DELEGATE, Account, Credentials, Configuration
+from exchangelib.errors import UnauthorizedError
 
 
 DEFAULT_INTERVAL_SECONDS = 10
@@ -38,9 +35,14 @@ LOGGING = {
         'defaultHandler': {
             'class': 'logging.handlers.RotatingFileHandler',
             'formatter': 'defaultFormatter',
-            'filename': 'imap-auto-forward.log',
+            'filename': 'exchange-auto-forward.log',
             'maxBytes': 1024 * 1024 * 5,
             'backupCount': 5,
+        },
+        'sentryHandler': {
+            'level': 'ERROR',
+            'class': 'raven.handlers.logging.SentryHandler',
+            'dsn': '',
         },
         'consoleHandler': {
             'class': 'logging.StreamHandler',
@@ -48,16 +50,19 @@ LOGGING = {
     },
     'loggers': {
         '': {
-            'handlers': ['defaultHandler'],
+            'handlers': ['defaultHandler', 'sentryHandler'],
             'level': 'INFO',
+            # 'level': 'DEBUG',
         },
         'console': {
             'handlers': ['consoleHandler'],
             'level': 'INFO',
+            # 'level': 'DEBUG',
             'propagate': False,
         },
     },
 }
+
 
 logging.config.dictConfig(LOGGING)
 
@@ -67,33 +72,6 @@ console = logging.getLogger('console')
 socket.setdefaulttimeout(DEFAULT_SOCKET_TIMEOUT)
 
 scheduler = BlockingScheduler()
-
-
-class SMTPClientFactory(object):
-
-    def __init__(self, host, port, username, password, is_tls):
-        self.host = host
-        self.port = port
-        self.username = username
-        self.password = password
-        self.is_tls = is_tls
-
-    def get_smtp_client_with_login(self):
-        smtp_client = smtplib.SMTP(self.host, self.port)
-        if self.is_tls:
-            smtp_client.starttls()
-        smtp_client.login(self.username, self.password)
-        return smtp_client
-
-
-def send_mail_via_smtp(smtp_client_factory, from_addr, to_addr, message):
-    """
-    ignore, many SMTP service provider do NOT allow send with other email address
-    """
-    smtp_client = smtp_client_factory.get_smtp_client_with_login()
-    # Client does not have permissions to send as this sender  # XXX
-    senderrs = smtp_client.sendmail(from_addr, [to_addr], message.encode('utf-8'))
-    smtp_client.quit()
 
 
 def send_mail_via_sendmail(from_addr, to_addr, subject, message):
@@ -112,59 +90,35 @@ def forward(redirect_to, email_data):
     m1, m2 = m.groups()
     from_mail = m1 or m2
     subject = message.get("Subject", "")
-    #executor.submit(send_mail_via_smtp, smtp_client_factory, from_mail, redirect_to, message)
-    #send_mail_via_smtp(smtp_client_factory, from_mail, redirect_to, message.as_string())
     send_mail_via_sendmail(from_mail, redirect_to, subject, message.as_string())
     logger.info('Processed, from: %s, to: %s, subject: %s' % (from_mail, redirect_to, subject))
 
 
-def search_and_forward(imap_client, redirect_to):
-    typ, data = imap_client.select(mailbox='INBOX')
-    if typ != 'OK':
-        logger.error('Select inbox failed, message: %s' % data)
-        imap_client.close()
-        return
-    typ, data = imap_client.search(None, 'UNSEEN')
-    if typ != 'OK':
-        logger.error('Search mail failed, message: %s' % data)
-        imap_client.close()
-        return
-    for message_number in data[0].split():
-        _, data = imap_client.fetch(message_number, '(RFC822)')
-        email_data = data[0][1].decode('UTF-8')
+def search_and_forward(account, redirect_to):
+    for message in account.inbox.filter(is_read=False)[:]:
+        data = message.mime_content
+        email_data = data.decode('UTF-8')
         forward(redirect_to, email_data)
+        message.is_read = True
+        message.save(update_fields=['is_read'])
         console.debug('>')
     console.debug('.')
-    imap_client.close()
 
 
 def run(host, username, password, redirect_to):
-    imap_client = None  # TODO pull up to global
+    credentials = Credentials(username=username, password=password)
+    try:
+        config = Configuration(server=host, credentials=credentials)
+    except UnauthorizedError as e:
+        logger.error('Login failed, message: %s' % e)
+        return
+    account = Account(primary_smtp_address=username, config=config, autodiscover=False,
+                      access_type=DELEGATE)
 
     try:
-        if imap_client is None:
-            imap_client = imaplib.IMAP4_SSL(host=host)
-            typ, message = imap_client.login(username, password)
-            if typ != 'OK':
-                logger.error('Login failed, message: %s' % message)
-                return
-        try:
-            search_and_forward(imap_client, redirect_to)
-        except TimeoutError as e:
-            imap_client = None
-            logger.error(e)
-            console.debug('!')
-        except imaplib.IMAP4.abort as e:
-            imap_client = None
-            logger.debug(e)
-            console.info('!')
-        except imaplib.IMAP4.error as e:
-            imap_client = None
-            logger.error(e)
-            console.debug('!')
+        search_and_forward(account, redirect_to)
     finally:
-        if imap_client is not None:
-            imap_client.logout()
+        pass
 
 
 def main():
@@ -172,14 +126,10 @@ def main():
     parser.add_argument('--username', '-u', required=True)
     parser.add_argument('--server', '-s', required=True)
     parser.add_argument('--redirectto', '-r', required=True)
-    # parser.add_argument('--smtphost', '-sh', required=True)
-    # parser.add_argument('--smtpport', '-sp', required=True)
-    # parser.add_argument('--smtpusername', '-su', required=True)
     args = parser.parse_args()
-    password = os.environ.get('IMAP_AUTO_FORWARD_PASSWORD')
-    # smtp_password = os.environ.get('IMAP_AUTO_FORWARD_SMTP_PASSWORD')
+    password = os.environ.get('EXCHANGE_AUTO_FORWARD_PASSWORD')
     if password is None:
-        password = getpass.getpass('IMAP password:')
+        password = getpass.getpass('EXCHANGE password:')
 
     scheduler.add_job(run, 'interval', max_instances=WORKER_SIZE, seconds=DEFAULT_INTERVAL_SECONDS,
                       args=[args.server, args.username, password, args.redirectto])
