@@ -10,6 +10,8 @@ import socket
 
 import subprocess
 import re
+
+import requests
 from apscheduler.schedulers.blocking import BlockingScheduler
 from exchangelib import DELEGATE, Account, Credentials, Configuration
 from exchangelib.errors import UnauthorizedError
@@ -112,8 +114,18 @@ def run(host, username, password, redirect_to):
     except UnauthorizedError as e:
         logger.error('Login failed, message: %s' % e)
         return
-    account = Account(primary_smtp_address=username, config=config, autodiscover=False,
-                      access_type=DELEGATE)
+    try:
+        account = Account(primary_smtp_address=username, config=config, autodiscover=False,
+                          access_type=DELEGATE)
+    except ConnectionResetError as e:
+        logger.debug(e)
+        console.info('!')
+        return
+    except requests.exceptions.ConnectionError as e:
+        logger.debug(e)
+        console.info('!')
+        return
+
 
     try:
         search_and_forward(account, redirect_to)
