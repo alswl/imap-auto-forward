@@ -7,7 +7,6 @@ import email
 import logging.config
 import getpass
 import socket
-
 import subprocess
 import re
 
@@ -23,6 +22,7 @@ MAIL_PATTERN = re.compile(".*<(.+@.+)>|([^<>]+)")
 SENDMAIL_BIN_PATH = "/usr/sbin/sendmail"  # full path!
 DEFAULT_SOCKET_TIMEOUT = 10
 WORKER_SIZE = 1
+DSN_TOKEN = os.environ.get('EXCHANGE_AUTO_FORWARD_DSN')
 
 LOGGING = {
     'version': 1,
@@ -44,7 +44,7 @@ LOGGING = {
         'sentryHandler': {
             'level': 'ERROR',
             'class': 'raven.handlers.logging.SentryHandler',
-            'dsn': '',
+            'dsn': DSN_TOKEN,
         },
         'consoleHandler': {
             'class': 'logging.StreamHandler',
