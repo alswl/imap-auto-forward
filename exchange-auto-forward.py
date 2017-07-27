@@ -117,20 +117,11 @@ def run(host, username, password, redirect_to):
     try:
         account = Account(primary_smtp_address=username, config=config, autodiscover=False,
                           access_type=DELEGATE)
-    except ConnectionResetError as e:
-        logger.debug(e)
-        console.info('!')
-        return
-    except requests.exceptions.ConnectionError as e:
-        logger.debug(e)
-        console.info('!')
-        return
-
-
-    try:
         search_and_forward(account, redirect_to)
-    finally:
-        pass
+    except (ConnectionResetError, requests.exceptions.ConnectionError, TimeoutError) as e:
+        logger.debug(e)
+        console.info('!')
+        return
 
 
 def main():
