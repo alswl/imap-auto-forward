@@ -14,7 +14,7 @@ import requests
 from apscheduler.schedulers.blocking import BlockingScheduler
 from exchangelib import DELEGATE, Account, Credentials, Configuration
 from exchangelib.errors import UnauthorizedError
-
+from urllib3.exceptions import ReadTimeoutError
 
 DEFAULT_INTERVAL_SECONDS = 10
 
@@ -118,7 +118,8 @@ def run(host, username, password, redirect_to):
         account = Account(primary_smtp_address=username, config=config, autodiscover=False,
                           access_type=DELEGATE)
         search_and_forward(account, redirect_to)
-    except (ConnectionResetError, requests.exceptions.ConnectionError, TimeoutError) as e:
+    except (ConnectionResetError, requests.exceptions.ConnectionError, TimeoutError,
+            ReadTimeoutError) as e:
         logger.debug(e)
         console.info('!')
         return
