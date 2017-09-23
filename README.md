@@ -2,12 +2,12 @@
 
 Reading email message by IMAP/EXCHANGE protocol, forward(origin message) to another by senmail.
 
-## Use case
+## Use Case
 
-Using Gmail to manage a third email, buy Gmail only support POP3,
-not support IMAP.
-And third email do not support POP3 only support IMAP.
-So I use this script to forward(redirect) all new message to Gmail.
+I want using Gmail to manage a third email, but Gmail only support POP3,
+do not support IMAP.
+And the third email only support IMAP,
+so I use this script to forward(redirect) all new message to Gmail.
 
 ## Usage
 
