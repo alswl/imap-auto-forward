@@ -1,5 +1,5 @@
 apscheduler==3.3.1
 ipython==5.3.0
 ipdb
-exchangelib==1.9.4
+exchangelib==1.10.7
 raven==6.1.0
