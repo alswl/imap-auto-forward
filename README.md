@@ -11,8 +11,28 @@ so I use this script to forward(redirect) all new message to Gmail.
 
 ## Usage
 
+install:
+
 ```
+pip3 install -r requirements.txt
+```
+
+imap:
+
+```
+// (optional)
+// export IMAP_AUTO_FORWARD_DSN=your_sentry_auth_code
+// (optional)
+// export IMAP_AUTO_FORWARD_PASSWORD=your_imap_password
 python3 imap-auto-forward.py -u username@from.com -s mail.from.com -r to@gmail.com
-// or
+```
+
+exchange:
+
+```
+// (optional)
+// export EXCHANGE_AUTO_FORWARD_DSN=your_sentry_auth_code
+// (optional)
+// export EXCHANGE_AUTO_FORWARD_PASSWORD=your_exchange_password
 python3 exchange-auto-forward.py -u username@from.com -s mail.from.com -r to@gmail.com
 ```

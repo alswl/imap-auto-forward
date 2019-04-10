@@ -25,6 +25,7 @@ MAIL_PATTERN = re.compile(".*<(.+@.+)>|([^<>]+)")
 SENDMAIL_BIN_PATH = "/usr/sbin/sendmail"  # full path!
 DEFAULT_SOCKET_TIMEOUT = 10
 WORKER_SIZE = 1
+DSN_TOKEN = os.environ.get('IMAP_AUTO_FORWARD_DSN')
 
 LOGGING = {
     'version': 1,
@@ -43,13 +44,18 @@ LOGGING = {
             'maxBytes': 1024 * 1024 * 5,
             'backupCount': 5,
         },
+        'sentryHandler': {
+            'level': 'ERROR',
+            'class': 'raven.handlers.logging.SentryHandler',
+            'dsn': DSN_TOKEN,
+        },
         'consoleHandler': {
             'class': 'logging.StreamHandler',
         },
     },
     'loggers': {
         '': {
-            'handlers': ['defaultHandler'],
+            'handlers': ['defaultHandler', 'sentryHandler'],
             'level': 'INFO',
         },
         'console': {
